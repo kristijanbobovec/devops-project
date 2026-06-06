@@ -1,0 +1,52 @@
+services:
+  frontend:
+    build: ./frontend
+    ports:
+      - "${FRONTEND_PORT}:${FRONTEND_PORT}"
+    env_file: .env
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+    command: npm run dev
+    depends_on:
+      - api
+    restart: unless-stopped
+
+  api:
+    build: ./api
+    ports:
+      - "${API_PORT}:${API_PORT}"
+    volumes:
+      - ./api:/app
+      - /app/node_modules
+    command: npm run dev
+    depends_on:
+      - postgres
+      - redis
+    restart: unless-stopped
+
+  worker:
+    build: ./worker
+    env_file: .env
+    volumes:
+      - ./worker:/app
+      - /app/node_modules
+    depends_on:
+      - postgres
+      - redis
+    restart: unless-stopped
+
+  postgres:
+    image: postgres:16-alpine
+    env_file: .env
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./infra/postgres/init.sql:/docker-entrypoint-initdb.d/init.sql
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+
+volumes:
+  pgdata:
