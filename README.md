@@ -74,19 +74,7 @@ docker build -t ticketing-frontend:v1 ./frontend
 docker build -t ticketing-worker:v1 ./worker
 
 # Primijeni sve manifeste
-kubectl apply -f k8s/namespace.yaml
-kubectl apply -f k8s/secret.yaml
-kubectl apply -f k8s/configmap.yaml
-kubectl create configmap postgres-init \
-  --from-file=init.sql=infra/postgres/init.sql \
-  --namespace ticketing
-kubectl apply -f k8s/rbac.yaml
-kubectl apply -f k8s/postgres.yaml
-kubectl apply -f k8s/redis.yaml
-kubectl apply -f k8s/api.yaml
-kubectl apply -f k8s/worker.yaml
-kubectl apply -f k8s/frontend.yaml
-kubectl apply -f k8s/networkpolicy.yaml
+kubectl apply -f k8s
 
 # Provjeri status
 kubectl get pods -n ticketing
