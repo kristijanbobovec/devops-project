@@ -1,48 +1,133 @@
-# Secure Event Ticketing Platform (Sample DevSecOps Project)
-
-Ovaj repozitorij je referentni uzorak aplikacije za kolegij **Uvod u DevOps - DevSecOps**.
-Prikazuje cijeli tok: lokalni razvoj kroz Compose i produkcijski deployment kroz Kubernetes manifeste.
+# Secure Event Ticketing Platform
 
 ## Arhitektura
 
-- `frontend` - web UI za pregled evenata i kupnju karata
-- `api` - REST API za evente, narudzbe i health provjere
-- `worker` - pozadinska obrada queue poruka
-- `postgres` - trajna pohrana narudzbi
-- `redis` - queue/cache sloj
+Aplikacija se sastoji od 5 servisa:
 
-### Brza validacija funkcionalnosti
+- **Frontend** — Express.js web sučelje (port 3000)
+- **API** — Express.js backend (port 8080)
+- **Worker** — pozadinski processor ticket narudžbi
+- **PostgreSQL** — baza podataka
+- **Redis** — queue i cache
 
-1. Health API:
-   ```bash
-   curl http://localhost:8080/healthz
-   curl http://localhost:8080/readyz
-   ```
-2. Dohvati evente:
-   ```bash
-   curl http://localhost:8080/events
-   ```
-3. Posalji narudzbu:
-   ```bash
-   curl -X POST http://localhost:8080/tickets/purchase \
-     -H "Content-Type: application/json" \
-     -d '{"eventId":"evt-1001","customerEmail":"student@example.com","quantity":2}'
-   ```
-4. Provjeri obradene narudzbe:
-   ```bash
-   curl http://localhost:8080/tickets/orders
-   ```
-5. UI:
-   - Otvori `http://localhost:3000`
+## 1. dio — Lokalni razvoj (Docker Compose)
 
-## Sigurnosni elementi
+### Preduvjeti
 
-- Multi-stage Docker build i non-root runtime korisnik
-- Secret + ConfigMap odvojena konfiguracija
-- Liveness/Readiness probe
-- Resource requests/limits
-- ServiceAccount + RBAC
-- NetworkPolicy segmentacija
-- Trivy skeniranje slika u CI pipelineu
+- Docker Desktop
+- Git
 
-Detalji skeniranja: `docs/security/image-scan-report.md`
+### Pokretanje
+
+```bash
+# Kloniraj repozitorij
+git clone https://github.com/kristijanbobovec/devops-project.git
+cd devops-project
+
+# Postavi environment varijable
+cp .env.example .env
+
+# Pokreni cijeli stack
+docker compose up --build
+```
+
+### Validacija
+
+```bash
+# Health endpoint
+curl http://localhost:8080/healthz
+
+# Frontend
+open http://localhost:3000
+```
+
+### Zaustavljanje
+
+```bash
+# Zaustavi (podaci ostaju)
+docker compose down
+
+# Zaustavi i obrisi podatke
+docker compose down -v
+```
+
+## 2. dio — Produkcijski deployment (Kubernetes)
+
+### Preduvjeti
+
+- Minikube
+- kubectl
+
+### Pokretanje
+
+```bash
+# Pokreni Minikube
+minikube start --driver=docker
+
+# Omogući Ingress
+minikube addons enable ingress
+
+# Postavi slike u Minikube
+eval $(minikube docker-env)
+docker build -t ticketing-api:v1 ./api
+docker build -t ticketing-frontend:v1 ./frontend
+docker build -t ticketing-worker:v1 ./worker
+
+# Primijeni sve manifeste
+kubectl apply -f k8s/namespace.yaml
+kubectl apply -f k8s/secret.yaml
+kubectl apply -f k8s/configmap.yaml
+kubectl create configmap postgres-init \
+  --from-file=init.sql=infra/postgres/init.sql \
+  --namespace ticketing
+kubectl apply -f k8s/rbac.yaml
+kubectl apply -f k8s/postgres.yaml
+kubectl apply -f k8s/redis.yaml
+kubectl apply -f k8s/api.yaml
+kubectl apply -f k8s/worker.yaml
+kubectl apply -f k8s/frontend.yaml
+kubectl apply -f k8s/networkpolicy.yaml
+
+# Provjeri status
+kubectl get pods -n ticketing
+```
+
+### Validacija
+
+```bash
+# Health endpointi
+minikube service api -n ticketing --url
+minikube service frontend -n ticketing --url
+
+# Provjeri sve resurse
+kubectl get all -n ticketing
+```
+
+### Rolling update i rollback
+
+```bash
+# Rolling update
+kubectl set image deployment/api api=ticketing-api:v2 -n ticketing
+kubectl rollout status deployment/api -n ticketing
+
+# Rollback
+kubectl rollout undo deployment/api -n ticketing
+```
+
+## CI/CD Pipeline
+
+GitHub Actions automatski:
+
+1. Gradi Docker slike za sve servise
+2. Skenira slike s Trivyjem (CRITICAL i HIGH ranjivosti)
+3. Sprema sigurnosne izvještaje kao artifacts
+4. Pusha slike na GitHub Container Registry
+
+## Sigurnost
+
+- Multi-stage Docker build (manje slike)
+- Non-root korisnik u svim kontejnerima
+- Secrets odvojeni od konfiguracije
+- RBAC i ServiceAccount s minimalnim pravima
+- NetworkPolicy segmentacija prometa
+- Trivy skeniranje u CI/CD pipelinu
